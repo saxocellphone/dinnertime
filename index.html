@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Synced Metronome</title>
+    <title>Dinnertime!</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -137,9 +137,7 @@
 
         document.getElementById("startButton").addEventListener("click", () => {
             const bpm = parseInt(document.getElementById("bpmInput").value, 10);
-            if (bpm >= 0 && bpm <= 400) {
-                startMetronome(bpm);
-            }
+            startMetronome(bpm);
         });
         
         document.getElementById("stopButton").addEventListener("click", stopMetronome);
