@@ -26,10 +26,14 @@
     <label for="bpmInput">Tempo (BPM):</label>
     <input type="number" id="bpmInput" min="0" max="400" value="120">
     <button id="startButton">Start Metronome</button>
+    <button id="stopButton" disabled>Stop Metronome</button>
     <div id="metronomeCircle"></div>
     
     <script>
         let audioBuffer;
+        let metronomeRunning = false;
+        let metronomeTimeout;
+        let audioContext;
         
         async function getNetworkTime() {
             const start = performance.now();
@@ -44,18 +48,23 @@
 
         async function createClickBuffer(audioContext) {
             const sampleRate = audioContext.sampleRate;
-            const duration = 0.02; // 20ms click sound for sharper attack
+            const duration = 0.01; // Shorter duration for a crisper click
             const buffer = audioContext.createBuffer(1, sampleRate * duration, sampleRate);
             const channelData = buffer.getChannelData(0);
             
             for (let i = 0; i < channelData.length; i++) {
-                channelData[i] = Math.exp(-i / (sampleRate * 0.005)) * Math.sin(2 * Math.PI * 2000 * (i / sampleRate));
+                channelData[i] = Math.exp(-i / (sampleRate * 0.002)) * Math.sin(2 * Math.PI * 3000 * (i / sampleRate));
             }
             return buffer;
         }
 
         async function startMetronome(bpm) {
-            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            if (metronomeRunning) return;
+            metronomeRunning = true;
+            document.getElementById("startButton").disabled = true;
+            document.getElementById("stopButton").disabled = false;
+            
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
             if (!audioBuffer) {
                 audioBuffer = await createClickBuffer(audioContext);
             }
@@ -72,8 +81,9 @@
             }
             
             function scheduleNextBeat() {
+                if (!metronomeRunning) return;
                 const timeUntilNextBeat = nextBeatTime - (Date.now() + offset);
-                setTimeout(() => {
+                metronomeTimeout = setTimeout(() => {
                     playClick(audioContext);
                     animateCircle();
                     nextBeatTime += beatInterval;
@@ -82,6 +92,13 @@
             }
             
             scheduleNextBeat();
+        }
+
+        function stopMetronome() {
+            metronomeRunning = false;
+            clearTimeout(metronomeTimeout);
+            document.getElementById("startButton").disabled = false;
+            document.getElementById("stopButton").disabled = true;
         }
 
         function playClick(audioContext) {
@@ -105,6 +122,8 @@
                 startMetronome(bpm);
             }
         });
+        
+        document.getElementById("stopButton").addEventListener("click", stopMetronome);
     </script>
 </body>
 </html>
