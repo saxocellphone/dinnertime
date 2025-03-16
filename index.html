@@ -27,6 +27,11 @@
     <input type="number" id="bpmInput" min="0" max="400" value="120">
     <button id="startButton">Start Metronome</button>
     <button id="stopButton" disabled>Stop Metronome</button>
+    <button id="useLocalClockButton">Use Local Clock</button>
+    <label for="offsetInput">Manual Offset (ms):</label>
+    <input type="number" id="offsetInput" placeholder="Enter offset">
+    <button id="increaseOffset">+</button>
+    <button id="decreaseOffset">-</button>
     <div id="metronomeCircle"></div>
     <p id="clockOffsetInfo">Local Clock Offset: Calculating...</p>
     <p id="syncStatus">Time Sync Status: Pending...</p>
@@ -40,8 +45,10 @@
         let nextBeatTime;
         let beatInterval;
         let localClockOffset = 0;
+        let useLocalClock = false;
         
         async function syncWithServer() {
+            if (useLocalClock || document.getElementById("offsetInput").value) return;
             try {
                 const response = await fetch("https://timeapi.io/api/Time/current/zone?timeZone=UTC");
                 const data = await response.json();
@@ -49,6 +56,7 @@
                 const localUtcTime = new Date().getTime() + (new Date().getTimezoneOffset() * 60000);
                 localClockOffset = serverTime - localUtcTime;
                 document.getElementById("clockOffsetInfo").textContent = `Local Clock Offset: ${localClockOffset.toFixed(2)} ms`;
+                document.getElementById("offsetInput").value = localClockOffset.toFixed(2);
                 document.getElementById("syncStatus").textContent = `Time Sync Status: Synced at ${new Date().toLocaleTimeString()}`;
                 document.getElementById("serverTimeStatus").textContent = `Server Time: ${new Date(serverTime).toLocaleTimeString()}`;
             } catch (error) {
@@ -70,7 +78,7 @@
         }
         
         function getCurrentTime() {
-            return Date.now() + localClockOffset;
+            return Date.now() + (useLocalClock ? 0 : localClockOffset);
         }
         
         function startMetronome(bpm) {
@@ -129,10 +137,36 @@
 
         document.getElementById("startButton").addEventListener("click", () => {
             const bpm = parseInt(document.getElementById("bpmInput").value, 10);
-            startMetronome(bpm);
+            if (bpm >= 0 && bpm <= 400) {
+                startMetronome(bpm);
+            }
         });
         
         document.getElementById("stopButton").addEventListener("click", stopMetronome);
+        document.getElementById("useLocalClockButton").addEventListener("click", () => {
+            useLocalClock = !useLocalClock;
+            document.getElementById("useLocalClockButton").textContent = useLocalClock ? "Use Synced Clock" : "Use Local Clock";
+            document.getElementById("syncStatus").textContent = useLocalClock ? "Time Sync Status: Using local clock" : "Time Sync Status: Pending...";
+        });
+        
+        document.getElementById("offsetInput").addEventListener("input", (event) => {
+            const manualOffset = parseInt(event.target.value, 10);
+            if (!isNaN(manualOffset)) {
+                localClockOffset = manualOffset;
+                useLocalClock = true;
+                document.getElementById("syncStatus").textContent = "Time Sync Status: Manual offset applied";
+            }
+        });
+
+        document.getElementById("increaseOffset").addEventListener("click", () => {
+            localClockOffset += 1;
+            document.getElementById("offsetInput").value = localClockOffset.toFixed(2);
+        });
+        
+        document.getElementById("decreaseOffset").addEventListener("click", () => {
+            localClockOffset -= 1;
+            document.getElementById("offsetInput").value = localClockOffset.toFixed(2);
+        });
         
         syncWithServer();
         setInterval(syncWithServer, 300000);
