@@ -4,106 +4,81 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Synced Metronome</title>
-    <style>
-        body { font-family: Arial, sans-serif; text-align: center; margin: 50px; }
-        #tempo { width: 100px; }
-        .beat { width: 50px; height: 50px; background: red; border-radius: 50%; display: inline-block; opacity: 0.2; transition: opacity 0.1s; }
-    </style>
 </head>
 <body>
     <h1>Synced Metronome</h1>
-    <label for="tempo">Tempo (BPM):</label>
-    <input type="number" id="tempo" min="0" max="400" value="120">
-    <button onclick="startMetronome()">Start</button>
-    <button onclick="stopMetronome()">Stop</button>
+    <label for="bpmInput">Tempo (BPM):</label>
+    <input type="number" id="bpmInput" min="0" max="400" value="120">
+    <button id="startButton">Start Metronome</button>
     
-    <div class="beat" id="beat"></div>
-
     <script>
-        let nextBeatTime = 0;
-        let latencyCorrection = 0;
-        let isRunning = false;
-        let audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        let audioBuffer;
+        
+        async function getNetworkTime() {
+            const start = performance.now();
+            const response = await fetch("https://timeapi.io/api/Time/current/zone?timeZone=UTC");
+            const end = performance.now();
+            const rtt = (end - start) / 2; // Round-trip time
+            const data = await response.json();
+            
+            const serverTime = new Date(data.dateTime).getTime();
+            return serverTime + rtt; // Adjust for network latency
+        }
 
-        async function getNTPTime() {
-            try {
-                const startTime = Date.now(); // Start request time
-                const response = await fetch('https://timeapi.io/api/Time/current/zone?timeZone=UTC');
-                const endTime = Date.now(); // End request time
-                const rtt = endTime - startTime; // Round Trip Time
-
-                const data = await response.json();
-                const serverTime = new Date(data.dateTime).getTime();
-
-                const oneWayLatency = rtt / 2; // Estimate one-way latency
-                return serverTime + oneWayLatency; // Adjusted NTP time
-            } catch (error) {
-                console.error("Error fetching NTP time:", error);
-                return Date.now();
+        async function createClickBuffer(audioContext) {
+            const sampleRate = audioContext.sampleRate;
+            const duration = 0.05; // 50ms click sound
+            const buffer = audioContext.createBuffer(1, sampleRate * duration, sampleRate);
+            const channelData = buffer.getChannelData(0);
+            
+            for (let i = 0; i < channelData.length; i++) {
+                channelData[i] = Math.sin(2 * Math.PI * 1000 * (i / sampleRate));
             }
+            return buffer;
         }
 
-        async function syncTime() {
-            const ntpTime = await getNTPTime();
-            const localTime = Date.now();
-            latencyCorrection = ntpTime - localTime; // Correcting for latency
-        }
-
-        async function startMetronome() {
-            const bpm = parseInt(document.getElementById("tempo").value);
-            if (bpm <= 0 || bpm > 400) {
-                alert("Please choose a tempo between 1 and 400 BPM.");
-                return;
+        async function startMetronome(bpm) {
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            if (!audioBuffer) {
+                audioBuffer = await createClickBuffer(audioContext);
             }
+            const beatInterval = 60000 / bpm; // Interval between beats in ms
 
-            await syncTime();
-            const beatInterval = (60 / bpm) * 1000;
-            const ntpTime = Date.now() + latencyCorrection;
-            nextBeatTime = ntpTime + beatInterval - (ntpTime % beatInterval);
-
-            isRunning = true;
-            setInterval(syncTime, 60000); // Re-sync every 60 seconds
-            requestAnimationFrame(syncMetronome);
-        }
-
-        function syncMetronome() {
-            if (!isRunning) return;
-
-            const currentTime = Date.now() + latencyCorrection;
-            if (currentTime >= nextBeatTime) {
-                triggerBeat();
-                const bpm = parseInt(document.getElementById("tempo").value);
-                const beatInterval = (60 / bpm) * 1000;
+            const networkTime = await getNetworkTime();
+            const now = Date.now();
+            const offset = networkTime - now;
+            
+            const currentHourStart = Math.floor(networkTime / 3600000) * 3600000;
+            let nextBeatTime = currentHourStart;
+            while (nextBeatTime < networkTime) {
                 nextBeatTime += beatInterval;
             }
-
-            requestAnimationFrame(syncMetronome);
+            
+            function scheduleNextBeat() {
+                const timeUntilNextBeat = nextBeatTime - (Date.now() + offset);
+                setTimeout(() => {
+                    playClick(audioContext);
+                    nextBeatTime += beatInterval;
+                    scheduleNextBeat();
+                }, timeUntilNextBeat);
+            }
+            
+            scheduleNextBeat();
         }
 
-        function triggerBeat() {
-            const beatElement = document.getElementById("beat");
-            beatElement.style.opacity = "1";
-            setTimeout(() => { beatElement.style.opacity = "0.2"; }, 100);
-
-            // Generate a short "click" sound
-            let oscillator = audioCtx.createOscillator();
-            let gainNode = audioCtx.createGain();
-
-            oscillator.type = "square";
-            oscillator.frequency.setValueAtTime(1000, audioCtx.currentTime);
-            gainNode.gain.setValueAtTime(1, audioCtx.currentTime);
-            gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.05);
-
-            oscillator.connect(gainNode);
-            gainNode.connect(audioCtx.destination);
-
-            oscillator.start();
-            oscillator.stop(audioCtx.currentTime + 0.05);
+        function playClick(audioContext) {
+            const source = audioContext.createBufferSource();
+            source.buffer = audioBuffer;
+            source.connect(audioContext.destination);
+            source.start();
         }
 
-        function stopMetronome() {
-            isRunning = false;
-        }
+        document.getElementById("startButton").addEventListener("click", async () => {
+            const bpm = parseInt(document.getElementById("bpmInput").value, 10);
+            if (bpm >= 0 && bpm <= 400) {
+                startMetronome(bpm);
+            }
+        });
     </script>
 </body>
 </html>
