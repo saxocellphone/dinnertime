@@ -27,9 +27,16 @@
 
         async function getNTPTime() {
             try {
+                const startTime = Date.now(); // Start request time
                 const response = await fetch('https://timeapi.io/api/Time/current/zone?timeZone=UTC');
+                const endTime = Date.now(); // End request time
+                const rtt = endTime - startTime; // Round Trip Time
+
                 const data = await response.json();
-                return new Date(data.dateTime).getTime();
+                const serverTime = new Date(data.dateTime).getTime();
+
+                const oneWayLatency = rtt / 2; // Estimate one-way latency
+                return serverTime + oneWayLatency; // Adjusted NTP time
             } catch (error) {
                 console.error("Error fetching NTP time:", error);
                 return Date.now();
@@ -39,7 +46,7 @@
         async function syncTime() {
             const ntpTime = await getNTPTime();
             const localTime = Date.now();
-            latencyCorrection = ntpTime - localTime;
+            latencyCorrection = ntpTime - localTime; // Correcting for latency
         }
 
         async function startMetronome() {
